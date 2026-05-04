@@ -1,0 +1,45 @@
+#include <DHT.h>       // Cambiado a < >
+#include <HTTPClient.h>
+#include <WiFi.h>
+
+// Configuración TagoIO
+const char* serverAddress = "http://api.tago.io/data";
+const char* tokenHeader = "d75b06b6-b450-4f69-ba91-daed91b96f86";
+
+// WiFi
+const char* ssid = "RED MECATRONICA";
+const char* password = "MECA2026@.";
+
+// Sensor DHT
+#define DHTPIN 5      
+#define DHTTYPE DHT11 
+DHT dht(DHTPIN, DHTTYPE);
+
+void setup() {
+  Serial.begin(115200);
+  dht.begin();
+  WiFi.begin(ssid, password);
+  while (WiFi.status() != WL_CONNECTED) { delay(500); Serial.print("."); }
+  Serial.println("\nConectado!");
+}
+
+void loop() {
+  float h = dht.readHumidity();
+  float t = dht.readTemperature();
+
+  if (isnan(h) || isnan(t)) {
+    Serial.println("Error sensor");
+    return;
+  }
+
+  String postData = "[{\"variable\":\"temperature\",\"value\":" + String(t) + "},{\"variable\":\"humidity\",\"value\":" + String(h) + "}]";
+  
+  HTTPClient http;
+  http.begin(serverAddress);
+  http.addHeader("Content-Type", "application/json");
+  http.addHeader("Device-Token", tokenHeader);
+  int statusCode = http.POST(postData);
+  http.end();
+
+  delay(60000);
+}
