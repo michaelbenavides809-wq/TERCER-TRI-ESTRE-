@@ -1,0 +1,101 @@
+#include <HTTPClient.h>
+#include <WiFi.h>
+
+// 🔹 Configuración TagoIO
+const char* serverAddress = "http://api.tago.io/data";
+const char* tokenHeader = "720561ac-e47d-421c-a426-a57f0ed0c625";
+
+// 🔹 WiFi
+const char* ssid = "RED MECATRONICA";
+const char* password = "MECA2026@.";
+
+// 🔹 Pines ultrasónico
+#define TRIG_PIN 5
+#define ECHO_PIN 18
+
+void setup() {
+  Serial.begin(115200);
+
+  pinMode(TRIG_PIN, OUTPUT);
+  pinMode(ECHO_PIN, INPUT);
+
+  Serial.print("Conectando a WiFi...");
+  WiFi.begin(ssid, password);
+  while (WiFi.status() != WL_CONNECTED) { 
+    delay(500); 
+    Serial.print("."); 
+  }
+  Serial.println("\n✅ WiFi Conectado!");
+}
+
+float medirDistancia() {
+  digitalWrite(TRIG_PIN, LOW);
+  delayMicroseconds(2);
+  
+  digitalWrite(TRIG_PIN, HIGH);
+  delayMicroseconds(10);
+  digitalWrite(TRIG_PIN, LOW);
+
+  // Timeout de 30ms para no bloquear el código si el sensor no responde
+  long duracion = pulseIn(ECHO_PIN, HIGH, 30000); 
+  
+  if (duracion == 0) return -1; // Error de lectura o fuera de rango
+
+  float distancia = duracion * 0.034 / 2; // Cálculo en cm
+  return distancia;
+}
+
+void loop() {
+  // 1. Verificar conexión WiFi antes de proceder
+  if (WiFi.status() != WL_CONNECTED) {
+    Serial.println("Reconectando WiFi...");
+    WiFi.begin(ssid, password);
+    delay(2000);
+    return;
+  }
+
+  // 2. Realizar la medición
+  float distancia = medirDistancia();
+
+  if (distancia < 0 || distancia > 400) {
+    Serial.println("⚠️ Error: Sensor fuera de rango o mal conectado.");
+    delay(2000);
+    return;
+  }
+
+  Serial.print("Distancia medida: ");
+  Serial.print(distancia);
+  Serial.println(" cm");
+
+  // 3. Preparar JSON y enviar a TagoIO
+  // Forzamos 2 decimales para asegurar que TagoIO lo interprete como número
+  String postData = "[{\"variable\":\"distance\",\"value\":" + String(distancia, 2) + "}]";
+
+  HTTPClient http;
+  http.begin(serverAddress);
+  http.addHeader("Content-Type", "application/json");
+  http.addHeader("Device-Token", tokenHeader);
+
+  Serial.println("Enviando datos a TagoIO...");
+  int statusCode = http.POST(postData);
+
+  // 4. Analizar respuesta del servidor
+  if (statusCode > 0) {
+    Serial.print("Respuesta del servidor: ");
+    Serial.println(statusCode);
+    if (statusCode == 200 || statusCode == 201) {
+      Serial.println("✅ ¡Dato enviado con éxito!");
+    } else {
+      Serial.println("❌ Error en la solicitud (Revisa el Token)");
+    }
+  } else {
+    Serial.print("Error en HTTP: ");
+    Serial.println(http.errorToString(statusCode).c_str());
+  }
+
+  http.end();
+
+  // TagoIO recomienda no saturar con demasiados mensajes por segundo
+  // 60 segundos es un buen intervalo para telemetría básica
+  delay(60000); 
+}
